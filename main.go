@@ -9,7 +9,7 @@ import (
 	"os/exec"
 	"unicode"
 
-	"github.com/jamillosantos/gitmoji/emoji"
+	"github.com/jamillosantos/mojify/emoji"
 )
 
 type emojiWriter struct {
