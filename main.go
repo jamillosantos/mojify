@@ -31,9 +31,6 @@ func (w *emojiWriter) Write(p []byte) (int, error) {
 	for {
 		r2, _, err := buf.ReadRune()
 		if err == io.EOF {
-			if w.returnEOF {
-				return n, err
-			}
 			return n, nil
 		}
 		if err != nil {
@@ -46,9 +43,6 @@ func (w *emojiWriter) Write(p []byte) (int, error) {
 			for {
 				w.r, _, err = buf.ReadRune()
 				if err == io.EOF {
-					if w.returnEOF {
-						return n, err
-					}
 					return n, nil
 				}
 				if err != nil {
@@ -90,14 +84,10 @@ func main() {
 	// This if for checking if the stdin is being piped.
 	stat, _ := os.Stdin.Stat()
 	if (stat.Mode() & os.ModeCharDevice) == 0 { // Stdin through pipe
-		writer := newEmojiWriter(true, os.Stdout)
-		for {
-			_, err := io.Copy(writer, os.Stdin)
-			if err == io.EOF {
-				return
-			} else if err != nil {
-				panic(err)
-			}
+		writer := newEmojiWriter(false, os.Stdout)
+		_, err := io.Copy(writer, os.Stdin)
+		if err != nil {
+			panic(err)
 		}
 		return
 	}
