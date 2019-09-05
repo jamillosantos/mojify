@@ -3,62 +3,116 @@ package main
 import (
 	"bufio"
 	"bytes"
+	"errors"
 	"io"
 	"os"
+	"os/exec"
 	"unicode"
 
 	"github.com/jamillosantos/gitmoji/emoji"
 )
 
-func main() {
-	bufIn := bufio.NewReader(os.Stdin)
-	bufOut := bufio.NewWriter(os.Stdout)
-	defer bufOut.Flush()
+type emojiWriter struct {
+	r         rune
+	returnEOF bool
+	writer    *bufio.Writer
+}
+
+func newEmojiWriter(returnEOF bool, writer io.Writer) *emojiWriter {
+	return &emojiWriter{
+		writer:    bufio.NewWriter(writer),
+		returnEOF: returnEOF,
+	}
+}
+
+func (w *emojiWriter) Write(p []byte) (int, error) {
+	n := 0
+	buf := bytes.NewBuffer(p)
 	for {
-		r, _, err := bufIn.ReadRune()
+		r2, _, err := buf.ReadRune()
 		if err == io.EOF {
-			return
+			if w.returnEOF {
+				return n, err
+			}
+			return n, nil
 		}
 		if err != nil {
-			panic(err)
+			return n, err
 		}
-		if r == ':' {
+		n++
+		w.r = r2
+		if w.r == ':' {
 			emojiBuf := bytes.NewBuffer(nil)
 			for {
-				r, _, err = bufIn.ReadRune()
+				w.r, _, err = buf.ReadRune()
 				if err == io.EOF {
-					bufOut.WriteRune(':')
-					bufOut.Write(emojiBuf.Bytes())
-					return
+					if w.returnEOF {
+						return n, err
+					}
+					return n, nil
 				}
 				if err != nil {
-					panic(err)
+					w.writer.WriteRune(':')
+					w.writer.Write(emojiBuf.Bytes())
+					return n, err
 				}
-				if unicode.IsSpace(r) || r == '\n' || r == '\r' {
-					bufOut.WriteRune(':')
-					bufOut.Write(emojiBuf.Bytes())
-					bufOut.WriteRune(r)
+				n++
+				if unicode.IsSpace(w.r) || w.r == '\n' || w.r == '\r' {
+					w.writer.WriteRune(':')
+					w.writer.Write(emojiBuf.Bytes())
+					w.writer.WriteRune(w.r)
 					break
-				} else if r == ':' {
+				} else if w.r == ':' {
 					emojiKey := ":" + emojiBuf.String() + ":"
 					emojiCode, ok := emoji.EmojiCodeMap[emojiKey]
 					if !ok {
-						bufOut.WriteRune(':')
-						bufOut.WriteString(emojiKey)
-						bufOut.WriteRune(':')
+						w.writer.WriteRune(':')
+						w.writer.WriteString(emojiKey)
+						w.writer.WriteRune(':')
 						break
 					}
-					bufOut.WriteString(emojiCode)
+					w.writer.WriteString(emojiCode)
 					break
 				} else {
-					emojiBuf.WriteRune(r)
+					emojiBuf.WriteRune(w.r)
 				}
 			}
 		} else {
-			bufOut.WriteRune(r)
-			if r == '\n' {
-				bufOut.Flush()
+			w.writer.WriteRune(w.r)
+			if w.r == '\n' {
+				w.writer.Flush()
 			}
 		}
+	}
+}
+
+func main() {
+	// This if for checking if the stdin is being piped.
+	stat, _ := os.Stdin.Stat()
+	if (stat.Mode() & os.ModeCharDevice) == 0 { // Stdin through pipe
+		writer := newEmojiWriter(true, os.Stdout)
+		for {
+			_, err := io.Copy(writer, os.Stdin)
+			if err == io.EOF {
+				return
+			} else if err != nil {
+				panic(err)
+			}
+		}
+		return
+	}
+
+	// This if for executing like watch.
+
+	if len(os.Args) < 2 {
+		panic(errors.New("missing arguments"))
+	}
+	cmd := exec.Command(os.Args[1], os.Args[2:]...)
+	cmd.Stdin = os.Stdin
+	cmd.Stdout = newEmojiWriter(false, os.Stdout)
+	cmd.Stderr = newEmojiWriter(false, os.Stderr)
+	err := cmd.Run()
+	if err != nil {
+		panic(err)
 	}
 }

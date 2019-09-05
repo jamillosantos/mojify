@@ -1,0 +1,8 @@
+mojify
+
+.history/
+
+vendor/
+
+.vscode/
+.idea/
